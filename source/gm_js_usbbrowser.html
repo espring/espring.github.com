@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+  <title>The source code</title>
+  <link href="../resources/prettify/prettify.css" type="text/css" rel="stylesheet" />
+  <script type="text/javascript" src="../resources/prettify/prettify.js"></script>
+  <style type="text/css">
+    .highlight { display: block; background-color: #ddd; }
+  </style>
+  <script type="text/javascript">
+    function highlight() {
+      document.getElementById(location.hash.replace(/#/, "")).className = "highlight";
+    }
+  </script>
+</head>
+<body onload="prettyPrint(); highlight();">
+  <pre class="prettyprint lang-js">/*
+ * This file is extend Javascript interface of SmartAuto platform.
+ * 
+ * 	Reference C++ inteface 
+ *  	@see &lt;a href=&quot;http://nutshell.suntec.net/nutshelldevelop/?p=framework/api/QtSystemAPI.git;a=tree;f=include/nqmedia;h=abe9862670ba211fddc7b085dc8de8c35955be3a;hb=HEAD&quot;&gt;NQUsbBrowserApi.h&lt;/a&gt; 
+ *  
+ *  Referect C++ implement  
+ *  	&lt;a href=&quot;http://nutshell.suntec.net/nutshelldevelop/?p=framework/api/QtSystemAPI.git;a=tree;f=nqmedia/usb;h=22a4ed32cf0c6ae7256f85cb17c36ec29b393450;hb=HEAD&quot;&gt;NQUsbBrowserImpl.h, NQUsbBrowserImpl.cpp&lt;/a&gt;
+
+ */
+
+(function(){
+	&quot;use strict&quot;;
+})();
+
+
+// @tag nutshell,extJs
+// @define nutshell.usbBrowser
+// @require nutshell。usbManager
+
+<span id='nutshell-usbBrowser'>/**
+</span> * @class nutshell.usbBrowser
+ * 
+ * 1. 在使用Browser接口前，请确认已经通过usbManager连接上了USB设备。
+ * 
+ * 2. 如果需要响应Callback，请在使用功能接口方法前调用registerCallback
+ * 
+ * 3. 支持的浏览Usb方式有3种： {@link BROWSER_ITEMTYPE}
+ * 		1）按Folder浏览，：BROWSER_ITEMTYPE。BROWSER_ITEMTYPE_ROOT_USB : 0, 
+ * 				浏览目录的树结构：ROOT -&gt; Folder -&gt; Subfolder -&gt;File
+ * 				其中，ROOT时返回的Type是BROWSER_ITEMTYPE。BROWSER_ITEMTYPE_ROOT_USB
+ * 					Folder和SubFolder时返回的Type是BROWSER_ITEMTYPE.BROWSER_ITEMTYPE_FOLDER
+ * 					File时返回的Type是BROWSER_ITEMTYPE.BROWSER_ITEMTYPE_FILE
+ * 
+ * 		2）按Aritist浏览： BROWSER_ITEMTYPE。BROWSER_ITEMTYPE_ROOT_ARTIST : 1, 
+ * 				浏览目录的树结构：ROOT -&gt; ARTIST -&gt; ALBUM -&gt; Track
+ * 		3）按Album浏览： BROWSER_ITEMTYPE。BROWSER_ITEMTYPE_ROOT_ALBUM : 2,  
+ * 				// ALBUM -&gt; Track
+ * 		4）按Genre浏览： BROWSER_ITEMTYPE。BROWSER_ITEMTYPE_ROOT_GENRE : 3, 
+ * 				// GENRE -&gt;(ARTIST -&gt; ALBUM)-&gt; Track
+ * 
+ * 4. 初始化状态下，根据式样的要求决定App是处于哪一种浏览方式，例如：式样要求“文件浏览方式”。
+ * 		调用 reqSetMediaTypeFilter,设备浏览方式。例如：所有文件MEDIATYPEFILTER.MEDIATYPEFILTER_ALL
+ * 		底层Callback： mediaTypeFilterUpdatedCb
+ * 			底层将4个机能（Usb、Artist、Album、Genre）认为是第一级目录。自动调用selectRoot。
+ * 		底层Callback：hierarchyChangedCb。 为空数组'{[]}'
+ * 		底层Callback：listSubItemCountUpdatedCb. 数目为4:4个机能（Folder、Artist、Album、Genre）
+ * 		
+ * 		调用 reqSelect(1) : 进入Usb Folder模式的Root
+ * 		底层扫描U盘。会定时返回扫描结果的Cb
+ * 			底层Callback：listSubItemCountUpdatedCb，返回当前已经完成的总数。 第一次等于4
+ * 		底层Callback：hierarchyChangedCb.为数组'{['name':'folder', 'index':1, 'type':USB_ROOT]}' ??
+ * 
+ * 		调用reqGetList: 要求返回Start开始的，共Count项
+ * 		底层Callback	：listDataReady。 返回的是：USB Root上的文件和文件夹列表。（hierarchyList最后一项）： 在这里可以刷新画面List。
+ * 		用户可以调用 getList;
+ * 
+ * 		画面上发生点击操作，List被点中。
+ * 		调用reqSelect(Index); 
+ * 			//这里底层接口要求1开始。 1是第0项：猜测对应BROWSER_ITEMTYPE.BROWSER_ITEMTYPE_ROOT_USB 
+ * 		底层Callback： {@link nutshell.usbBrowser#hierarchyChanged}(info)；
+ * 			//猜测对应BROWSER_ITEMTYPE.BROWSER_ITEMTYPE_ROOT_USB 
+ * 
+ * 5. 子目录的递归浏览。例如： 画面显示当前目录下所有的文件，点击其中的一个子目录。
+ * 		画面点击的响应事件里能得到被点击的条目Index。
+ * 		调用reqSelect(Index+1); //
+ * 		底层Callback：{@link nutshell.usbBrowser#hierarchyChangedCb}(info); 
+ * 			//其中info.m_type == BROWSER_ITEMTYPE.BROWSER_ITEMTYPE_FOLDER 
+ * 		
+ * 
+ * 6. 播放文件。 例如： 画面显示当前目录下所有的文件，点击其中的一个文件。 注意 ： 这里不知道文件类型是Audio还是Video?
+ * 		画面点击的响应事件里能得到被点击的条目Index。
+ * 		调用reqSelect(Index+1); //
+ * 		底层Callback：{@link nutshell.usbPlayer#trackInfoUpdatedCb}; //这时，底层开始播放文件,返回的是Player的Callback。
+ * 
+ * 7. List快速滚动
+ * 		注意：因为系统自动扫描U盘上的文件，需要较长时间才能将文件列表记录至DB中，
+ * 		所以对上层会不断回调{@link nutshell.usbBrowser#listSubItemCountUpdatedCb}。
+ * 		这里是否需要监听listSubItemCountUpdatedCb呢？
+ * 
+ * 		初始化时，通过{@link nutshell.usbBrowser#getTotalCount()}得到数据总数。 
+ * 			注意：因为U盘可能还未扫描完成，所以会有不断变化的总数？
+ * 		根据滚动方向，预判需要下一批数据。例如：当前处在数据第x条，一屏是10条，提前准备下一屏数据。
+ * 			先queryListReady(x+10, 10);如果ture，则直接getList
+ * 			否则，reqGetList,并且等待底层的回调：{@link nutshell.usbPlayer#listDataReadyCb}
+ * 
+ * @singleton
+ */
+(function() {
+	
+<span id='MEDIATYPEFILTER'>		/**
+</span>		 * enum MEDIATYPEFILTER
+		 * 
+		 */
+        MEDIATYPEFILTER = {
+<span id='MEDIATYPEFILTER-property-MEDIATYPEFILTER_ONLY_AUDIO'>        	/** Only audio files will be shown in UI. */
+</span>            MEDIATYPEFILTER_ONLY_AUDIO : 0, ///&lt; 
+<span id='MEDIATYPEFILTER-property-MEDIATYPEFILTER_ONLY_VIDEO'>            /** Only video files will be shown in UI. */
+</span>            MEDIATYPEFILTER_ONLY_VIDEO : 1,     ///&lt; 
+            
+<span id='global-property-MEDIATYPEFILTER_ALL'>            /** Audio &amp;&amp; Video （目前式样上未使用） 
+</span>             *
+             * @ignore
+             */
+<span id='MEDIATYPEFILTER-property-MEDIATYPEFILTER_MAX'>            MEDIATYPEFILTER_ALL : 2,            ///&lt; Audio&amp;video files will be shown in UI.
+</span><span id='MEDIATYPEFILTER-method-inRange'>            MEDIATYPEFILTER_MAX : 3,		//default value.
+</span>            
+            inRange : function(index){
+            	if( index == MEDIATYPEFILTER.MEDIATYPEFILTER_ONLY_AUDIO ||
+            		index == MEDIATYPEFILTER.MEDIATYPEFILTER_ONLY_VIDEO || 
+            		index == MEDIATYPEFILTER.MEDIATYPEFILTER_ALL ){
+            			return true;
+            	}
+            	else{
+            		return false;//outof range of DEVICE_TYPE
+            	}
+            }
+        };
+        
+<span id='BROWSER_ITEMTYPE'>        /**
+</span>         *  enum BROWSER_ITEMTYPE
+         * 
+         * 	UI层根据该 Type显示对应的Icon。 仅此而以！
+         */
+        BROWSER_ITEMTYPE = {
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ROOT_ALL'>	    /** 所有文件（ALL）模式。*/
+</span>	    BROWSER_ITEMTYPE_ROOT_ALL : 0,
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ROOT_USB'>            /** 文件浏览模式下的ROOT。 //Root -&gt; Folder -&gt; Subfolder -&gt;File*/
+</span>            BROWSER_ITEMTYPE_ROOT_USB : 1, //Root -&gt; Folder -&gt; Subfolder -&gt;File
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ROOT_ARTIST'>            /** ARTIST浏览模式下的ROOT. // ARTIST -&gt; ALBUM -&gt; Track */
+</span>            BROWSER_ITEMTYPE_ROOT_ARTIST : 2, 
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ROOT_GENRE'><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ROOT_ALBUM'>            BROWSER_ITEMTYPE_ROOT_ALBUM : 3,  // ALBUM -&gt; Track
+</span></span>            BROWSER_ITEMTYPE_ROOT_GENRE : 4, // GENRE -&gt;(ARTIST -&gt; ALBUM)-&gt; Track
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_FOLDER'>            /** Folder */
+</span>            BROWSER_ITEMTYPE_FOLDER : 5,
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_FILE'>            /** File */
+</span>            BROWSER_ITEMTYPE_FILE : 6,
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ARTIST'>            /** ARTIST */
+</span>            BROWSER_ITEMTYPE_ARTIST : 7,
+<span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ALBUM'>            BROWSER_ITEMTYPE_ALBUM : 8,
+</span><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_GENRE'>            BROWSER_ITEMTYPE_GENRE : 9,
+</span><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_TRACK'>            BROWSER_ITEMTYPE_TRACK : 10,
+</span><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ARTIST_ALL'><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ARTISTALBUM_ALL'>            BROWSER_ITEMTYPE_ARTISTALBUM_ALL : 11, // 快捷方式（在List上有该 Button）：显示当前ARTIST下所有的Track
+</span></span><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_ALBUM_ALL'>            BROWSER_ITEMTYPE_ARTIST_ALL : 12, 	// 快捷方式：显示所有的Track
+</span><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_GENRE_ALL'>            BROWSER_ITEMTYPE_ALBUM_ALL : 13,	// 快捷方式：显示所有的Track
+</span><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_OTHER'>            BROWSER_ITEMTYPE_GENRE_ALL : 14,	// 快捷方式：所有的Track
+</span><span id='BROWSER_ITEMTYPE-property-BROWSER_ITEMTYPE_MAX'>            BROWSER_ITEMTYPE_OTHER : 15, // 未使用。
+</span>            BROWSER_ITEMTYPE_MAX : 16
+        };
+	
+<span id='MIMETYPE'>	/**
+</span>	 * enum NMUSB_MIMETYPE 
+	*/
+	MIMETYPE = {
+<span id='MIMETYPE-property-MIMETYPE_UNKNOWN'>        	MIMETYPE_UNKNOWN : 0,
+</span><span id='MIMETYPE-property-MIMETYPE_AUDIO_MAX'>        	MIMETYPE_AUDIO_MAX : 1,
+</span><span id='MIMETYPE-property-MIMETYPE_VIDEO_MAX'>        	MIMETYPE_VIDEO_MAX : 2,
+</span><span id='MIMETYPE-property-MIMETYPE_MAX'>        	MIMETYPE_MAX : 3
+</span>	};
+        
+<span id='BrowserListItemInfo'>        /**
+</span>		 * @class BrowserListItemInfo 
+		 * 
+		 */
+	    function BrowserListItemInfo(name, index, type, fullPath, fileSize, mimeType){
+<span id='BrowserListItemInfo-property-name'>	    	/** @property {String}: Item上显示的文字内容。 */
+</span>            this.name = '';	// Item上显示的文字内容。
+<span id='BrowserListItemInfo-property-index'>            /** @property {number} : 对应List控件上的Index, 注意是从1开始。 */
+</span>            this.index = index;     /// 对应List控件上的Index
+<span id='BrowserListItemInfo-property-type'>            /** {@link BROWSER_ITEMTYPE} */
+</span>            this.type = type;      ///&lt; (defined in enum BROWSER_ITEMTYPE)
+<span id='BrowserListItemInfo-property-fullPath'>	    /** @property {String}: 文件或文件夹的完整路径。 */
+</span>	    this.fullPath = fullPath; ///对应文件或文件夹的全路径
+<span id='BrowserListItemInfo-property-fileSize'> 	    /** @property {number} : 对应文件的大小	*/
+</span>	    this.fileSize = fileSize;
+<span id='BrowserListItemInfo-property-mimeType'>	    /** @property {number} : 对应文件的类型	*/
+</span>	    this.mimeType = mimeType;
+       	};
+       	
+        
+	
+<span id='nutshell-usbBrowser'>/**
+</span> * @class nutshell.usbBrowser
+ * @singleton
+ *	
+ * interface of Usb Browser
+ * 	Reference C++ inteface 
+ *  	@see &lt;a href=&quot;http://nutshell.suntec.net/nutshelldevelop/?p=framework/api/QtSystemAPI.git;a=tree;f=include/nqmedia;h=abe9862670ba211fddc7b085dc8de8c35955be3a;hb=HEAD&quot;&gt;NQUsbBrowserApi.h&lt;/a&gt; 
+ *  
+ *  Referect C++ implement  
+ *  	&lt;a href=&quot;http://nutshell.suntec.net/nutshelldevelop/?p=framework/api/QtSystemAPI.git;a=tree;f=nqmedia/usb;h=22a4ed32cf0c6ae7256f85cb17c36ec29b393450;hb=HEAD&quot;&gt;NQUsbBrowserImpl.h, NQUsbBrowserImpl.cpp&lt;/a&gt;
+ *
+ */        
+nutshell.usbBrowser = {
+	
+<span id='nutshell-usbBrowser-property-m_cbMgr'>		/** 
+</span>		 * callback manager
+		 * @private 
+		 */
+		m_cbMgr : {},		
+	
+		m_filterType : MEDIATYPEFILTER.MEDIATYPEFILTER_MAX, //default : no filter type.
+		
+<span id='nutshell-usbBrowser-property-m_hierarchyInfoList'>		/**
+</span>		 * Current hierarchy Info List
+		 * 
+		 * @private
+		 * 	{BrowserListItemInfo}
+		 */
+		m_hierarchyInfoList: [],
+		
+<span id='nutshell-usbBrowser-property-m_itemList'>		/**
+</span>		 * @private
+		 */
+		m_itemList : [],
+				
+<span id='nutshell-usbBrowser-property-m_totalCount'>		/**
+</span>		 * 当前DB中的总条数。
+		 * @private
+		 */
+	    m_totalCount : 0,
+<span id='nutshell-usbBrowser-method-registerCallback'>	    /**
+</span>	    * Register callback function of usb manager.
+	    *		
+	    * @param {String} setName Descripte the callback type.
+	    * @param {Function} func Callback function.
+	    */
+	    registerCallback: function(setName, func){
+	    	
+	    	//nutshell.usbBrowser.m_cbMgr.setApi(this);
+	    	
+	    	nutshell.usbBrowser.m_cbMgr.registerMyself(&quot;nutshell.usbBrowser&quot;);
+	    	
+	    	nutshell.usbBrowser.m_cbMgr.setCustomCallback(setName, func);
+	    	
+	    },
+	    
+<span id='nutshell-usbBrowser-method-emitCallback'>	    /**
+</span>	    * Emit the callbacks from handler layer.(Usb service)
+	    * 
+	    * @param {String} setName Descripte the callback type.
+	    * @param {Array} arguments array.
+	    * 
+	    */
+	    emitCallback : function(setName, args){
+	    	nutshell.usbBrowser.m_cbMgr.handle(setName, args);
+	    },
+	    
+          
+        
+<span id='nutshell-usbBrowser-method-reqResetDB'>        /**
+</span>         * Request to delete the database and rebuild it.
+         * 
+         * 插入Usb时，根据式样要求，提出重置DB时Usb信息。  每500ms给出通知。
+         * 
+         * 	注意：这是耗时操作！！ 1秒钟扫描100个AV文件。
+         *
+         * @param void
+         * @return void  : [C++] errorCode 
+         */
+        reqResetDB: function(){
+        	//						
+	     	SendRequestInPage2(&quot;nutshell.usbBrowser.reqResetDB&quot;);	
+        },
+
+<span id='nutshell-usbBrowser-method-reqSetMediaTypeFilter'>        /**
+</span>         * Request to set the media type filter.
+         * 
+         * 	指定浏览方式！ 第一个调用 函数！每次进入App时都需要调用 。
+         *
+         * @param type : [IN] the wanted media type, audio or video ({@Link MEDIATYPEFILTER})
+         * @return errorCode :  0 - need to wait the signal hierarchyChanged()
+         * @note If set succeccfully, then the hierarchy will be back to root list （会发一个Root List给UI，需要忽略？）
+         */
+        reqSetMediaTypeFilter: function(typeFilter){
+        	if( !MEDIATYPEFILTER.inRange(typeFilter) ){
+        		return &quot;invalid parameter.&quot;;
+        	}
+        	
+        	var param = {
+				&quot;typeFilter&quot;:typeFilter
+			};
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqSetMediaTypeFilter&quot;, JSON.stringify(param));
+        },
+
+<span id='nutshell-usbBrowser-method-reqSelectRoot'>        /**
+</span>         * Request to select the root list.
+         * 
+         * 	快速回到当前Filter的Root！
+         * 
+         * @param void
+         * @return errorCode :  0 - need to wait the signal hierarchyChanged()
+         */
+        reqSelectRoot: function(){
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqSelectRoot&quot;);
+        },
+
+<span id='nutshell-usbBrowser-method-reqSelect'>        /**
+</span>         * Request to select the specified item.
+         * 
+         * 	选择： 1.如果是文件夹，则递归进入。  hierarchyChanged
+         * 		2.如果是文件，则开始播放。 start to play a file/track
+         * 
+         * @note If the selected item is a track or file, then it will be loaded to play.\n
+         *      
+         *
+         * @param selectedIndex : [IN] specified item in browser list
+         * @return errorCode :  0 - need to wait the signal hierarchyChanged()\n
+         *                      1 - start to play a file/track
+         */
+        reqSelect: function(selectedIndex){
+        	var param = {
+				&quot;selectedIndex&quot;:selectedIndex 
+			};
+		nutshell.usbPlayer.clearCache();
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqSelect&quot;, JSON.stringify(param));
+        },
+
+<span id='nutshell-usbBrowser-method-reqBack'>        /**
+</span>         * Request to back to upper hierarchy.
+         * @note default value is the layer of back
+         *
+         * @param layerCount : [IN] the req layerCount of back, 1 is default.
+         * @return errorCode :  0 - need to wait the signal hierarchyChanged()
+         */
+        reqBack: function(count){
+        	var param = {
+				&quot;count&quot;:count
+			};
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqBack&quot;, JSON.stringify(param));
+        },
+
+<span id='nutshell-usbBrowser-method-reqGetList'>        /**
+</span>         * Request to get the item list in current hierarchy.
+         * @note Index start from 1, not 0!
+         *
+         * @param start : [IN] the start index
+         * @param count : [IN] the desired count
+         * @return errorCode :  0 - need to wait the signal listDataReady();\n
+         *                      1 - can get the list immediately.
+         */
+        reqGetList: function(first, count){
+        	var param = {
+				&quot;start&quot;:first ,
+				&quot;count&quot;:count
+			};
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqGetList&quot;, JSON.stringify(param));
+        },
+
+<span id='nutshell-usbBrowser-method-reqArtistSongList'>        /**
+</span>         * Request to get the all song list of the artist.
+         * 
+         * 	当前Artist名下的所有Song
+         *
+         * @param artist : the select artist
+         * @return errorCode :  0 - need to wait the signal listDataReady();\n
+         *                      1 - can get the list immediately.
+         */
+        reqArtistSongList: function(artist){
+         	var param = {
+				&quot;artist&quot;:artist
+			};
+	       	SendRequestInPage2(&quot;nutshell.usbBrowser.reqArtistSongList&quot;, JSON.stringify(param));
+        },
+
+<span id='nutshell-usbBrowser-method-reqAlbumSongList'>        /**
+</span>         * Request to get the all song list of the album.
+         *
+         * @param album : the select album
+         * @return errorCode :  0 - need to wait the signal listDataReady();\n
+         *                      1 - can get the list immediately.
+         */
+        reqAlbumSongList: function(album){
+         	var param = {
+				&quot;album&quot;:album
+			};
+	       	SendRequestInPage2(&quot;nutshell.usbBrowser.reqAlbumSongList&quot;, JSON.stringify(param));
+        },
+
+<span id='nutshell-usbBrowser-method-reqGenreSongList'>        /**
+</span>         * Request to get the all song list of the artist.
+         *
+         * @param artist : the select artist
+         * @return errorCode :  0 - need to wait the signal listDataReady();\n
+         *                      1 - can get the list immediately.
+         */
+        reqGenreSongList: function(genre){
+        	var param = {
+				&quot;genre&quot;:genre
+			};
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqGenreSongList&quot;, JSON.stringify(param));
+        },
+
+<span id='nutshell-usbBrowser-method-reqFolderSongList'>        /**
+</span>         * Request to get the all song list of the album.
+         *
+         * @param album : the select album
+         * @return errorCode :  0 - need to wait the signal listDataReady();\n
+         *                      1 - can get the list immediately.
+         */
+        reqFolderSongList: function(folderName){
+         	var param = {
+				&quot;folderName&quot;:folderName
+			};
+	       	SendRequestInPage2(&quot;nutshell.usbBrowser.reqFolderSongList&quot;, JSON.stringify(param));
+        },
+        
+<span id='nutshell-usbBrowser-method-reqThumbnail'>        /**
+</span>         * Request to get a thumbnial data.
+         * 
+         * @param {String} fileName: a full path name of the image file. 
+         */
+        reqThumbnail : function(fileName){
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqThumbnail&quot;, JSON.stringify({'fileName' : fileName}));
+        },
+
+<span id='nutshell-usbBrowser-method-reqPathUnfold'>        /**
+</span>         * Request to unfold a folder.
+         * 
+         * @param {String} fullPath: a full path name of the folder. 
+         */
+        reqPathUnfold : function(fullPath){
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqPathUnfold&quot;, JSON.stringify({'fullPath' : fullPath}));
+
+        },
+        
+<span id='nutshell-usbBrowser-method-reqPlayByPath'>	/**
+</span>         * Request to play a track.
+         * 
+         * @param {String} fullPath: a full path name of the track. 
+         */
+        reqPlayByPath : function(fullPath){
+        	SendRequestInPage2(&quot;nutshell.usbBrowser.reqPlayByPath&quot;, JSON.stringify({'fullPath' : fullPath}));
+
+        },
+        ///////////////// local data API list ////////////////////////////////
+
+<span id='nutshell-usbBrowser-method-getMediaTypeFilter'>         /**
+</span>         * Get the value of media type filter.
+         *
+         * 
+         * @return {MEDIATYPEFILTER)} type :[OUT] the media type, audio or video (defined in enum MEDIATYPEFILTER)
+         */
+        getMediaTypeFilter: function(){
+        	return nutshell.usbBrowser.m_filterType;
+        },
+
+<span id='nutshell-usbBrowser-method-queryListReady'>        /**
+</span>         * Query if list data is already cached.
+         * @note Index start from 1, not 0!
+         * 
+         * 	Check是否有缓存。由LIst的式样决定，方便快速Flip
+         *
+         * @param start : [IN] the start index.
+         * @param count : [IN] the count.
+         * @return errorcode : 0 - The data is already cached.
+         */
+        queryListReady: function(start, count){
+        	//TODO:
+        	return true;
+        },
+
+<span id='nutshell-usbBrowser-method-getTotalCount'>        /**
+</span>         * Get the total item count of current hierarchy, include files and folders.
+         * @note Update the value when emit the signal listSubItemCountUpdated().
+         * 
+         * 每过一段时间（500ms），DB发生更新时，给出listSubItemCountUpdated通知。
+         *
+         * @return count : [OUT] the item count
+         */
+        getTotalCount: function(){
+        	return nutshell.usbBrowser.m_totalCount;
+        },
+
+<span id='nutshell-usbBrowser-method-getList'>        /**
+</span>         * Get the item list in current hierarchy.
+         *  
+         * @note Update the value when emit the signal listDataReady().
+         *
+         * @param start : [IN] the start index
+         * @param count : [IN] the desired count
+         * 
+         * @return list : null -- if out of range.
+         */
+        getList: function(start, count){
+        	if( nutshell.usbBrowser.m_itemList == undefined ){
+        		return undefined;
+        	}
+        	//TODO: Check input paramters.
+        	
+        	//TODO: start? count?
+        	var list = [];
+        	var i = 0, j = 0; 
+        	for( i = start; i &lt; nutshell.usbBrowser.m_itemList.length &amp;&amp; list.length &lt; count; ++i ){
+        		list.push(nutshell.usbBrowser.m_itemList[i]);
+        	}
+        	
+        	return list;
+        },
+
+<span id='nutshell-usbBrowser-method-getHierarchyInfo'>        /**
+</span>         * Get the current hierarchy info(the footprint that UI goes through).
+         * @note Update the value when emit the signal hierarchyChanged().
+         * 
+         * 	BrowserListItemInfo info;
+         * 	: 初始化值：按照式样，
+         *
+         * @note If in root list, the hierarchy info is empty.\n
+         *      Otherwise the hierarchy info is just like this:\n
+         *            eg.1: QString(&quot;Udisk1&quot;)-&gt;QString(&quot;folder1&quot;)-&gt;QString(&quot;SubFolder1&quot;)\n
+         *            eg.2: QString(&quot;Artist&quot;)-&gt;QString(&quot;Michael Jackson&quot;)-&gt;QString(&quot;Number Ones&quot;)\n
+         * @return infoList {BrowserListItemInfo} : [OUT] the hierarchy info
+         */
+        getHierarchyInfo: function(){
+        	return nutshell.usbBrowser.m_hierarchyInfoList;
+        },
+       
+        
+        ///////////////// Signal ////////////////////////////////
+
+<span id='nutshell-usbBrowser-event-mediaTypeFilterUpdatedCb'>        /**
+</span>         * Notify UI if media filter type successfully changed.
+         * 
+         * 	Trigger: calling reqSetMedialTypeFilter() by default type.
+         * 			 
+         * 
+         * @event mediaTypeFilterUpdatedCb
+         * 
+         * @param type : [IN] current media filter type.{@link MEDIATYPEFILTER}
+         * @return void
+         * @note UI can call getMediaTypeFilter() after UI recieved this signal.
+         */
+        mediaTypeFilterUpdatedCb: function(type){
+        	if( type != undefined &amp;&amp;  nutshell.usbBrowser.m_filterType != type ){
+        		nutshell.usbBrowser.m_filterType = type;
+        		return true;
+        	}
+        	else{
+ 	       		return false;       		
+        	}
+        },
+
+<span id='nutshell-usbBrowser-event-listDataReadyCb'>        /**
+</span>         * Notify UI if list data is ready.
+         * 
+         *
+         * @event
+         * @param realStartIndex : [IN] the real start index we got.
+         * @param realCount : [IN] the real count we got.
+         * @return void
+         * @note UI can call getList() after UI recieved this signal.
+         */
+        listDataReadyCb: function(realStartIndex, realCount, itemList){
+        	//TODO: check input parameters.
+       
+        	
+        	//
+        	if( itemList != undefined ){
+        		nutshell.usbBrowser.m_itemList = [];//clear
+        		
+        		//TODO: convert case by case.
+        		for( var o in itemList ){
+        			nutshell.usbBrowser.m_itemList.push(itemList[o]);
+        		}
+	        	return true;
+        	}
+        	
+        	return false;
+        },
+
+<span id='nutshell-usbBrowser-event-browserListUpdatedCb'>        /**
+</span>         * Notify UI if database updated.
+         * 
+         *  可以和listSubItemCountUpdated合并, 但是这条cb没有返回数据？ 。
+         * 
+         * Trigger: automatic signal when database has been updated.
+         * 
+         * @event
+         *
+         * @param void
+         * @return void
+         * @note UI can call getList() after UI recieved this signal.
+         */
+        browserListUpdatedCb: function(){
+        	return true;
+        },
+
+<span id='nutshell-usbBrowser-event-hierarchyChangedCb'>        /**
+</span>         * Notify UI if hierarchy successfully changed.
+         * 
+         * @event
+         *
+         * @param infoList {@link BrowserListItemInfo}
+         * @return {boolean} 
+         * @note UI can call getHierarchyInfo() after UI recieved this signal.
+         */
+        hierarchyChangedCb: function(infoList){
+        	//TODO: check input.        	
+        	
+        	//clear
+        	nutshell.usbBrowser.m_hierarchyInfoList = [];
+        	
+        	for( var i in infoList ){
+        		nutshell.usbBrowser.m_hierarchyInfoList.push(infoList[i]);
+        	}
+        	
+        	return true;
+        },
+
+<span id='nutshell-usbBrowser-event-listSubItemCountUpdatedCb'>        /**
+</span>         * Notify UI if hierarchy successfully changed, notify the subitemcount.
+         * 
+         *  ！ DB定时更新时给出listSubItemCountUpdated回调。
+         * 
+         * @event
+         *
+         * @param count : [IN] the subitemcount we got.
+         * @return void
+         * @note UI can call getTotalCount() after UI recieved this signal.
+         */
+        listSubItemCountUpdatedCb: function(count){
+        	nutshell.usbBrowser.m_totalCount = count;
+        	return true;
+        },
+	
+<span id='nutshell-usbBrowser-method-listPathUnfoldReadyCb'>         /**
+</span>         * Notifty UI if unfold data list ready.
+	 *
+         *  
+         */
+	listPathUnfoldReadyCb : function(itemList){
+		if( itemList != undefined ){
+			nutshell.usbBrowser.m_itemList = [];//clear
+	
+		//TODO: convert case by case.
+			for( var o in itemList ){
+				nutshell.usbBrowser.m_itemList.push(itemList[o]);
+			}
+			return true;
+		}
+        	
+        	return false;
+	},
+	
+<span id='nutshell-usbBrowser-method-thumbnailCb'>        /**
+</span>         * Notifty UI if image data(base64 decoded) recieved.
+         *  
+         */
+        thumbnailCb: function(fileName, fileData){
+        	//TODO: 
+        	
+        	return true;
+        }
+	};
+
+<span id='nutshell-usbBrowser-property-m_cbMgr'>	/**
+</span>	 * 
+	 */
+	nutshell.usbBrowser.m_cbMgr = callbackBase.createInstance();
+	
+	nutshell.usbBrowser.m_cbMgr.setApi(nutshell.usbBrowser);
+})();
+</pre>
+</body>
+</html>
